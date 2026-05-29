@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Hapisten Kaçış - Kazma Oyunu</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; }
+  html,body { height:100%; background:#0d0b14; font-family:system-ui,Segoe UI,Roboto,sans-serif; color:#fff; overflow:hidden; }
+  #wrap { position:relative; width:100%; height:100%; display:flex; flex-direction:column; align-items:center; }
+  #hud {
+    width:100%; max-width:520px; padding:8px 10px; display:flex; gap:8px; align-items:center;
+    font-size:13px; flex-wrap:wrap;
+  }
+  .stat { display:flex; align-items:center; gap:5px; background:#1c1830; padding:5px 9px; border-radius:10px; }
+  .bar { width:70px; height:9px; background:#000; border-radius:6px; overflow:hidden; }
+  .bar > i { display:block; height:100%; transition:width .12s; }
+  #depth { margin-left:auto; font-weight:700; color:#ffd34d; }
+  #game { display:block; touch-action:none; border-radius:14px; background:#000; box-shadow:0 10px 40px rgba(0,0,0,.6); }
+  #shopBtn { background:#3a2f6b; border:none; color:#fff; padding:6px 12px; border-radius:10px; font-weight:600; cursor:pointer; }
+  /* dpad */
+  #pad { position:absolute; bottom:18px; right:18px; width:150px; height:150px; }
+  .pbtn {
+    position:absolute; width:48px; height:48px; background:rgba(90,75,160,.55);
+    border:2px solid rgba(255,255,255,.25); border-radius:12px; color:#fff; font-size:22px;
+    display:flex; align-items:center; justify-content:center; backdrop-filter:blur(2px);
+  }
+  .pbtn:active { background:rgba(140,120,230,.85); }
+  #up{top:0;left:51px} #down{bottom:0;left:51px} #left{top:51px;left:0} #right{top:51px;right:0}
+  .overlay {
+    position:absolute; inset:0; background:rgba(8,6,16,.92); display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center; padding:24px; gap:14px; z-index:20;
+  }
+  .overlay h1 { font-size:30px; background:linear-gradient(90deg,#ffd34d,#ff7a59); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+  .overlay p { opacity:.85; max-width:340px; line-height:1.5; font-size:14px; }
+  .btn { background:linear-gradient(90deg,#7a5cff,#9d6bff); border:none; color:#fff; padding:13px 30px;
+    border-radius:14px; font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 6px 20px rgba(122,92,255,.5); }
+  .hidden { display:none !important; }
+  /* shop */
+  #shop { z-index:30; }
+  .item { background:#1c1830; border:1px solid #322a52; border-radius:12px; padding:12px 16px; width:300px;
+    display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .item .nm { font-weight:600; font-size:14px; } .item .ds { font-size:11px; opacity:.6; }
+  .buy { background:#2e7d4f; border:none; color:#fff; padding:8px 14px; border-radius:9px; font-weight:700; cursor:pointer; font-size:13px; }
+  .buy:disabled { background:#444; opacity:.6; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="hud">
+    <div class="stat">⚡<div class="bar"><i id="enBar" style="width:100%;background:linear-gradient(90deg,#ffe14d,#ffb84d)"></i></div></div>
+    <div class="stat">❤️<div class="bar"><i id="hpBar" style="width:100%;background:linear-gradient(90deg,#ff5e7e,#ff2e54)"></i></div></div>
+    <div class="stat">💰<span id="money">0</span></div>
+    <button id="shopBtn">🛒 Market</button>
+    <div id="depth">0 m</div>
+  </div>
+  <canvas id="game"></canvas>
+
+  <div id="pad">
+    <div class="pbtn" id="up">▲</div>
+    <div class="pbtn" id="down">▼</div>
+    <div class="pbtn" id="left">◀</div>
+    <div class="pbtn" id="right">▶</div>
+  </div>
+
+  <div class="overlay" id="start">
+    <h1>⛏️ Hapisten Kaçış</h1>
+    <p>Hücreden aşağı kaz, taşları kır, elmas topla. Enerjini ve canını yönet — <b>150 metre</b> derine inip özgürlüğüne kavuş!</p>
+    <p style="font-size:12px">🎮 Yön tuşları / WASD veya ekrandaki ok tuşları. Bloğa doğru bas = kaz.</p>
+    <button class="btn" id="startBtn">Kazmaya Başla</button>
+    <p id="hi" style="font-size:12px;color:#ffd34d"></p>
+  </div>
+
+  <div class="overlay hidden" id="end">
+    <h1 id="endTitle">Yakalandın!</h1>
+    <p id="endMsg"></p>
+    <button class="btn" id="againBtn">Tekrar Dene</button>
+  </div>
+
+  <div class="overlay hidden" id="shop">
+    <h1>🛒 Market</h1>
+    <div class="item">
+      <div><div class="nm">⛏️ Kazma Gücü</div><div class="ds">Daha hızlı kaz</div></div>
+      <button class="buy" data-up="pick">Lv <span id="pickLv">1</span> · <span id="pickCost">30</span>💰</button>
+    </div>
+    <div class="item">
+      <div><div class="nm">⚡ Enerji Deposu</div><div class="ds">Maks. enerji +</div></div>
+      <button class="buy" data-up="energy">Lv <span id="enLv">1</span> · <span id="enCost">40</span>💰</button>
+    </div>
+    <div class="item">
+      <div><div class="nm">❤️ Zırh</div><div class="ds">Maks. can +</div></div>
+      <button class="buy" data-up="hp">Lv <span id="hpLv">1</span> · <span id="hpCost">50</span>💰</button>
+    </div>
+    <div class="item">
+      <div><div class="nm">🔋 Enerji Dolumu</div><div class="ds">Enerjini full doldur</div></div>
+      <button class="buy" data-up="refill">25💰</button>
+    </div>
+    <button class="btn" id="closeShop" style="margin-top:6px">Devam Et</button>
+  </div>
+</div>
+
+<script>
+const cv = document.getElementById('game'), ctx = cv.getContext('2d');
+const COLS = 9;
+let CELL, W, H, VIEWROWS;
+function resize(){
+  const maxW = Math.min(window.innerWidth-12, 520);
+  const maxH = window.innerHeight - 70;
+  CELL = Math.floor(maxW / COLS);
+  W = CELL*COLS;
+  VIEWROWS = Math.floor(maxH / CELL);
+  H = VIEWROWS*CELL;
+  cv.width = W; cv.height = H;
+}
+window.addEventListener('resize', resize); resize();
+
+// block types
+const EMPTY=0, DIRT=1, STONE=2, ROCK=3, GOLD=4, DIAMOND=5, GAS=6, WALL=7;
+const DEF = {
+  [DIRT]:   {hp:1.0, color:'#7a5230', edge:'#5e3f24', reward:0},
+  [STONE]:  {hp:2.4, color:'#6b6f78', edge:'#4d5159', reward:0},
+  [ROCK]:   {hp:4.2, color:'#3f434d', edge:'#2a2d34', reward:0},
+  [GOLD]:   {hp:2.0, color:'#caa23a', edge:'#8f6f1f', reward:18, gem:'#ffd34d'},
+  [DIAMOND]:{hp:3.2, color:'#3aa8c8', edge:'#1f6f8f', reward:45, gem:'#7fe8ff'},
+  [GAS]:    {hp:0.6, color:'#5a7a3a', edge:'#3f5a24', reward:0, hazard:8},
+  [WALL]:   {hp:Infinity, color:'#222', edge:'#111', reward:0},
+};
+
+let world=[], rowsGen=0;
+function genRow(r){
+  const row=[];
+  for(let c=0;c<COLS;c++){
+    if(c===0||c===COLS-1){ row.push({t:WALL,hp:Infinity}); continue; }
+    if(r<2){ row.push({t:EMPTY,hp:0}); continue; }
+    let t=DIRT;
+    const depth=r;
+    const rnd=Math.random();
+    if(depth>6 && rnd<0.30) t=STONE;
+    if(depth>14 && rnd<0.16) t=ROCK;
+    if(rnd>0.965) t=GOLD;
+    if(depth>10 && rnd>0.985) t=DIAMOND;
+    if(depth>8 && rnd<0.05) t=GAS;
+    row.push({t, hp:DEF[t]?DEF[t].hp:1});
+  }
+  return row;
+}
+function ensureRows(upto){
+  while(rowsGen<=upto){ world[rowsGen]=genRow(rowsGen); rowsGen++; }
+}
+
+// player
+let P, state, money, dig, particles, camY, keys, save;
+const GOAL_DEPTH = 150; // meters
+
+function loadSave(){
+  try{ save = JSON.parse(localStorage.getItem('hk_save')||'{}'); }catch(e){ save={}; }
+  save.pick = save.pick||1; save.energy = save.energy||1; save.hp = save.hp||1;
+  save.hi = save.hi||0;
+}
+function persist(){ localStorage.setItem('hk_save', JSON.stringify(save)); }
+
+function maxEnergy(){ return 80 + (save.energy-1)*40; }
+function maxHP(){ return 100 + (save.hp-1)*40; }
+function digPower(){ return 1.4 + (save.pick-1)*0.9; }
+
+function reset(){
+  loadSave();
+  world=[]; rowsGen=0; ensureRows(VIEWROWS+4);
+  P = { c:Math.floor(COLS/2), r:1, px:0, py:0,
+        energy:maxEnergy(), hp:maxHP() };
+  P.px = P.c*CELL; P.py = P.r*CELL;
+  money=0; dig=null; particles=[]; camY=0; keys={};
+  state='play';
+}
+
+// ---- audio ----
+let AC;
+function beep(freq, dur, type='square', vol=0.08){
+  try{
+    AC = AC || new (window.AudioContext||window.webkitAudioContext)();
+    const o=AC.createOscillator(), g=AC.createGain();
+    o.type=type; o.frequency.value=freq; o.connect(g); g.connect(AC.destination);
+    g.gain.value=vol; g.gain.exponentialRampToValueAtTime(0.0001, AC.currentTime+dur);
+    o.start(); o.stop(AC.currentTime+dur);
+  }catch(e){}
+}
+
+// ---- input ----
+const KMAP={ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right',w:'up',s:'down',a:'left',d:'right',W:'up',S:'down',A:'left',D:'right'};
+addEventListener('keydown',e=>{ if(KMAP[e.key]){keys[KMAP[e.key]]=true; e.preventDefault();} });
+addEventListener('keyup',e=>{ if(KMAP[e.key]) keys[KMAP[e.key]]=false; });
+['up','down','left','right'].forEach(id=>{
+  const el=document.getElementById(id);
+  const on=e=>{e.preventDefault(); keys[id]=true;};
+  const off=e=>{e.preventDefault(); keys[id]=false;};
+  el.addEventListener('touchstart',on,{passive:false}); el.addEventListener('touchend',off);
+  el.addEventListener('mousedown',on); el.addEventListener('mouseup',off); el.addEventListener('mouseleave',off);
+});
+
+function dir(){
+  if(keys.down) return [0,1];
+  if(keys.left) return [-1,0];
+  if(keys.right) return [1,0];
+  if(keys.up) return [0,-1];
+  return null;
+}
+
+// ---- update ----
+let last=performance.now();
+function loop(now){
+  const dt=Math.min((now-last)/1000,0.05); last=now;
+  if(state==='play') update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+
+function update(dt){
+  const tx=P.c*CELL, ty=P.r*CELL;
+  const moving = Math.abs(P.px-tx)>1 || Math.abs(P.py-ty)>1;
+  // smooth move toward target cell
+  const sp=CELL*7*dt;
+  P.px += Math.max(-sp,Math.min(sp, tx-P.px));
+  P.py += Math.max(-sp,Math.min(sp, ty-P.py));
+
+  if(!moving){
+    P.px=tx; P.py=ty;
+    const d=dir();
+    if(d){
+      const nc=P.c+d[0], nr=P.r+d[1];
+      if(nr<1){ /* can't go above */ }
+      else{
+        ensureRows(nr+1);
+        const cell=world[nr][nc];
+        if(cell.t===EMPTY){ P.c=nc; P.r=nr; }
+        else if(cell.t===WALL){ /* blocked */ }
+        else {
+          // dig
+          if(P.energy>0){
+            const power=digPower()*dt*1.6;
+            cell.hp-=power;
+            P.energy-=power*4.5;
+            if(P.energy<0)P.energy=0;
+            if(Math.random()<0.4) spawnParticle(nc,nr,DEF[cell.t].color);
+            if(Math.random()<0.15) beep(120+Math.random()*40,0.04,'square',0.03);
+            if(cell.hp<=0){
+              const def=DEF[cell.t];
+              if(def.reward){ money+=def.reward; beep(880,0.12,'triangle',0.09); }
+              else beep(200,0.06,'square',0.05);
+              if(def.hazard){ P.hp-=def.hazard; beep(90,0.25,'sawtooth',0.12); }
+              for(let i=0;i<6;i++) spawnParticle(nc,nr, def.gem||def.color);
+              cell.t=EMPTY; cell.hp=0;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // energy regen when not digging
+  const dg = dir();
+  const isDigging = dg && !moving && (()=>{ const cc=world[P.r+dg[1]]?.[P.c+dg[0]]; return cc && cc.t!==EMPTY && cc.t!==WALL; })();
+  if(!isDigging){ P.energy = Math.min(maxEnergy(), P.energy + maxEnergy()*0.22*dt); }
+
+  // camera
+  const target = P.py - H*0.4;
+  camY += (target-camY)*Math.min(1, dt*6);
+  if(camY<0)camY=0;
+
+  // particles
+  for(const p of particles){ p.vy+=600*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.life-=dt; }
+  particles=particles.filter(p=>p.life>0);
+
+  // depth / hud
+  P.depth = Math.max(0, Math.floor((P.r-1)));
+  ensureRows(Math.floor((camY+H)/CELL)+4);
+
+  // win / lose
+  if(P.depth>=GOAL_DEPTH){ win(); }
+  if(P.hp<=0){ lose(); }
+
+  updateHUD();
+}
+
+function spawnParticle(c,r,color){
+  particles.push({x:c*CELL+CELL/2,y:r*CELL+CELL/2,vx:(Math.random()-0.5)*120,vy:-Math.random()*120,life:0.5+Math.random()*0.3,color});
+}
+
+function updateHUD(){
+  document.getElementById('enBar').style.width=(P.energy/maxEnergy()*100)+'%';
+  document.getElementById('hpBar').style.width=(Math.max(0,P.hp)/maxHP()*100)+'%';
+  document.getElementById('money').textContent=money;
+  document.getElementById('depth').textContent=P.depth+' / '+GOAL_DEPTH+' m';
+}
+
+// ---- render ----
+function render(){
+  ctx.clearRect(0,0,W,H);
+  // bg gradient by depth
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#1a1426'); g.addColorStop(1,'#0a0810');
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+
+  const r0=Math.floor(camY/CELL)-1, r1=r0+VIEWROWS+2;
+  for(let r=Math.max(0,r0);r<=r1;r++){
+    ensureRows(r);
+    for(let c=0;c<COLS;c++){
+      const cell=world[r][c];
+      const x=c*CELL, y=r*CELL-camY;
+      if(cell.t===EMPTY){ continue; }
+      const def=DEF[cell.t];
+      ctx.fillStyle=def.color;
+      ctx.fillRect(x,y,CELL,CELL);
+      // crack/damage
+      const full=def.hp;
+      if(isFinite(full) && cell.hp<full){
+        ctx.fillStyle='rgba(0,0,0,'+(0.45*(1-cell.hp/full))+')';
+        ctx.fillRect(x,y,CELL,CELL);
+      }
+      // gem sparkle
+      if(def.gem){
+        ctx.fillStyle=def.gem;
+        ctx.beginPath();
+        ctx.arc(x+CELL/2,y+CELL/2,CELL*0.18,0,7); ctx.fill();
+      }
+      ctx.strokeStyle=def.edge; ctx.lineWidth=2;
+      ctx.strokeRect(x+1,y+1,CELL-2,CELL-2);
+    }
+  }
+
+  // particles
+  for(const p of particles){
+    ctx.globalAlpha=Math.max(0,p.life);
+    ctx.fillStyle=p.color; ctx.fillRect(p.x-2,p.y-camY-2,4,4);
+  }
+  ctx.globalAlpha=1;
+
+  // player (prisoner)
+  const px=P.px, py=P.py-camY;
+  ctx.fillStyle='#ff8a3d';
+  roundRect(px+CELL*0.18, py+CELL*0.15, CELL*0.64, CELL*0.7, CELL*0.12); ctx.fill();
+  // stripes
+  ctx.fillStyle='rgba(0,0,0,.55)';
+  for(let i=0;i<3;i++) ctx.fillRect(px+CELL*0.18, py+CELL*0.28+i*CELL*0.16, CELL*0.64, CELL*0.06);
+  // head
+  ctx.fillStyle='#ffd9b0';
+  ctx.beginPath(); ctx.arc(px+CELL*0.5, py+CELL*0.22, CELL*0.16,0,7); ctx.fill();
+}
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+
+// ---- screens ----
+function show(id){ document.getElementById(id).classList.remove('hidden'); }
+function hide(id){ document.getElementById(id).classList.add('hidden'); }
+
+function start(){
+  reset(); hide('start'); hide('end'); hide('shop');
+  if(AC) AC.resume && AC.resume();
+}
+function win(){
+  state='over';
+  if(P.depth>save.hi){ save.hi=P.depth; persist(); }
+  document.getElementById('endTitle').textContent='🎉 Özgürsün!';
+  document.getElementById('endMsg').textContent='150 metre kazdın ve hapisten kaçtın! Topladığın altın: '+money+'💰';
+  show('end');
+}
+function lose(){
+  state='over';
+  if(P.depth>save.hi){ save.hi=P.depth; persist(); }
+  document.getElementById('endTitle').textContent='💀 Tükendin!';
+  document.getElementById('endMsg').textContent= P.hp<=0
+    ? 'Canın bitti. '+P.depth+' metre derine indin. En iyi: '+save.hi+' m'
+    : 'Oyun bitti. '+P.depth+' metre.';
+  show('end');
+}
+
+document.getElementById('startBtn').onclick=start;
+document.getElementById('againBtn').onclick=start;
+document.getElementById('shopBtn').onclick=()=>{ if(state==='play'){ state='pause'; openShop(); } };
+document.getElementById('closeShop').onclick=()=>{ hide('shop'); if(state==='pause') state='play'; last=performance.now(); };
+
+// ---- shop ----
+const COSTS={pick:lv=>30+lv*25, energy:lv=>40+lv*30, hp:lv=>50+lv*35};
+function openShop(){
+  refreshShop(); show('shop');
+}
+function refreshShop(){
+  document.getElementById('pickLv').textContent=save.pick;
+  document.getElementById('enLv').textContent=save.energy;
+  document.getElementById('hpLv').textContent=save.hp;
+  document.getElementById('pickCost').textContent=COSTS.pick(save.pick);
+  document.getElementById('enCost').textContent=COSTS.energy(save.energy);
+  document.getElementById('hpCost').textContent=COSTS.hp(save.hp);
+  document.querySelectorAll('.buy').forEach(b=>{
+    const u=b.dataset.up; let cost;
+    if(u==='refill') cost=25; else cost=COSTS[u](save[u]);
+    b.disabled = money<cost;
+  });
+}
+document.querySelectorAll('.buy').forEach(b=>{
+  b.onclick=()=>{
+    const u=b.dataset.up;
+    if(u==='refill'){ if(money>=25){ money-=25; P.energy=maxEnergy(); beep(700,0.1,'triangle',0.09);} }
+    else{
+      const cost=COSTS[u](save[u]);
+      if(money>=cost){
+        money-=cost; save[u]++; persist();
+        if(u==='energy') P.energy=maxEnergy();
+        if(u==='hp') P.hp=maxHP();
+        beep(900,0.12,'triangle',0.09);
+      }
+    }
+    refreshShop(); updateHUD();
+  };
+});
+
+// init
+loadSave();
+document.getElementById('hi').textContent = save.hi? ('🏆 En derin: '+save.hi+' m') : '';
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
