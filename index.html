@@ -191,10 +191,12 @@ function moveDir(){
 
 let last=performance.now();
 function loop(now){
-  const dt=Math.min((now-last)/1000,0.05); last=now;
-  if(state==='play') update(dt);
-  render();
   requestAnimationFrame(loop);
+  const dt=Math.min((now-last)/1000,0.05); last=now;
+  try{
+    if(state==='play') update(dt);
+    if(P) render();
+  }catch(e){ console.error(e); }
 }
 
 function hurt(amt){ P.hp-=amt; shake=Math.max(shake,amt*0.7); vib(40); snd(110,0.25,'sawtooth',0.12,-60); flash=0.4; }
